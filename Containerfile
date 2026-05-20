@@ -5,12 +5,13 @@ RUN apk add --no-cache ffmpeg
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=3000 \
-    APP_VERSION=0.1.8
+    APP_VERSION=0.1.13
 
 WORKDIR /opt/app-root/src
 
 COPY package.json package.json
 COPY server.js server.js
+COPY storage.js storage.js
 COPY VERSION VERSION
 COPY public public
 

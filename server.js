@@ -4,13 +4,15 @@ import { createServer } from "node:http";
 import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createAnalysisRecord, exportAnalysisRecord, getExportConfig, isExportConfigured } from "./storage.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = join(__dirname, "public");
-const appVersion = process.env.APP_VERSION || "0.1.8";
+const appVersion = process.env.APP_VERSION || "0.1.13";
 const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 3000);
 const rtspSessions = new Map();
+const exportConfig = getExportConfig();
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -100,8 +102,15 @@ function buildOpenAiPayload({ model, prompt, imageDataUrl }) {
   };
 }
 
+function normalizeEndpointInput(endpoint) {
+  const value = String(endpoint || "").trim();
+  if (!value) return value;
+  if (/^https?:\/\//i.test(value)) return value;
+  return `http://${value}`;
+}
+
 function normalizeOpenAiUrl(endpoint, resource) {
-  const url = new URL(endpoint);
+  const url = new URL(normalizeEndpointInput(endpoint));
   const path = url.pathname.replace(/\/+$/, "");
 
   if (resource === "models") {
@@ -131,11 +140,61 @@ function normalizeOpenAiUrl(endpoint, resource) {
   return url.toString();
 }
 
+function normalizeOllamaUrl(endpoint, resource) {
+  const url = new URL(normalizeEndpointInput(endpoint));
+  const path = url.pathname.replace(/\/+$/, "");
+
+  if (resource === "models") {
+    if (path.endsWith("/api/tags")) return url.toString();
+    if (path.endsWith("/api/chat")) {
+      url.pathname = path.replace(/\/chat$/, "/tags");
+      return url.toString();
+    }
+    if (path.endsWith("/api")) {
+      url.pathname = `${path}/tags`;
+      return url.toString();
+    }
+    url.pathname = `${path}/api/tags`;
+    return url.toString();
+  }
+
+  if (path.endsWith("/api/chat")) return url.toString();
+  if (path.endsWith("/api/tags")) {
+    url.pathname = path.replace(/\/tags$/, "/chat");
+    return url.toString();
+  }
+  if (path.endsWith("/api")) {
+    url.pathname = `${path}/chat`;
+    return url.toString();
+  }
+  url.pathname = `${path}/api/chat`;
+  return url.toString();
+}
+
+function buildOllamaPayload({ model, prompt, imageDataUrl }) {
+  return {
+    model: model || "llava:latest",
+    stream: false,
+    messages: [
+      {
+        role: "user",
+        content: prompt,
+        images: [imageDataUrl.replace(/^data:image\/\w+;base64,/, "")]
+      }
+    ],
+    options: {
+      temperature: 0.2
+    }
+  };
+}
+
 async function handleModels(req, res) {
+  let modelsUrl = "";
   try {
     const body = await readBody(req);
     const endpoint = String(body.endpoint || "").trim();
     const apiKey = String(body.apiKey || "").trim();
+    const protocol = body.protocol === "ollama" ? "ollama" : "vllm";
 
     if (!endpoint) {
       sendJson(res, 400, { error: "endpoint is required" });
@@ -145,7 +204,10 @@ async function handleModels(req, res) {
     const headers = {};
     if (apiKey) headers.authorization = `Bearer ${apiKey}`;
 
-    const modelsUrl = normalizeOpenAiUrl(endpoint, "models");
+    modelsUrl = protocol === "ollama"
+      ? normalizeOllamaUrl(endpoint, "models")
+      : normalizeOpenAiUrl(endpoint, "models");
+    logApp("models_load_attempt", { protocol, endpoint: modelsUrl });
     const upstream = await fetch(modelsUrl, { method: "GET", headers });
     const text = await upstream.text();
     let parsed;
@@ -155,9 +217,9 @@ async function handleModels(req, res) {
       parsed = { raw: text };
     }
 
-    const models = Array.isArray(parsed?.data)
-      ? parsed.data.map((item) => item.id).filter(Boolean)
-      : [];
+    const models = protocol === "ollama"
+      ? (Array.isArray(parsed?.models) ? parsed.models.map((item) => item.name).filter(Boolean) : [])
+      : (Array.isArray(parsed?.data) ? parsed.data.map((item) => item.id).filter(Boolean) : []);
 
     sendJson(res, upstream.ok ? 200 : upstream.status, {
       ok: upstream.ok,
@@ -167,7 +229,12 @@ async function handleModels(req, res) {
       raw: parsed
     });
   } catch (error) {
-    sendJson(res, 500, { error: error.message });
+    logApp("models_load_error", { endpoint: modelsUrl || null, error: error.message }, "error");
+    sendJson(res, 500, {
+      error: error.message,
+      endpoint: modelsUrl || null,
+      hint: "Para Ollama, use algo como http://IP:11434 ou IP:11434. O servidor da WebUI precisa conseguir acessar esse IP pela rede."
+    });
   }
 }
 
@@ -185,7 +252,9 @@ async function handleAnalyze(req, res) {
     const imageDataUrl = String(body.imageDataUrl || "").trim();
     const apiKey = String(body.apiKey || "").trim();
     const model = String(body.model || "llama-3.2-11b-vision").trim();
-    const protocol = body.protocol === "generic" ? "generic" : "vllm";
+    const protocol = ["generic", "ollama"].includes(body.protocol) ? body.protocol : "vllm";
+    const preset = String(body.preset || "").trim();
+    const source = String(body.source || "").trim();
 
     if (!endpoint || !prompt || !imageDataUrl) {
       sendJson(res, 400, { error: "endpoint, prompt and imageDataUrl are required" });
@@ -203,6 +272,8 @@ async function handleAnalyze(req, res) {
     const payload =
       protocol === "vllm"
         ? buildOpenAiPayload({ model, prompt, imageDataUrl })
+        : protocol === "ollama"
+          ? buildOllamaPayload({ model, prompt, imageDataUrl })
         : {
             model,
             prompt,
@@ -210,7 +281,11 @@ async function handleAnalyze(req, res) {
           };
 
     const startedAt = Date.now();
-    const upstreamUrl = protocol === "vllm" ? normalizeOpenAiUrl(endpoint, "chat") : endpoint;
+    const upstreamUrl = protocol === "vllm"
+      ? normalizeOpenAiUrl(endpoint, "chat")
+      : protocol === "ollama"
+        ? normalizeOllamaUrl(endpoint, "chat")
+        : endpoint;
     const upstream = await fetch(upstreamUrl, {
       method: "POST",
       headers,
@@ -229,19 +304,58 @@ async function handleAnalyze(req, res) {
     const answer =
       parsed?.choices?.[0]?.message?.content ||
       parsed?.choices?.[0]?.text ||
+      parsed?.message?.content ||
       parsed?.answer ||
       parsed?.response ||
       parsed?.raw ||
       "";
 
-    if (!res.writableEnded) sendJson(res, upstream.ok ? 200 : upstream.status, {
+    const responsePayload = {
       ok: upstream.ok,
       status: upstream.status,
       latencyMs: Date.now() - startedAt,
       endpoint: upstreamUrl,
       answer,
       raw: parsed
-    });
+    };
+
+    if (upstream.ok && exportConfig.enabled) {
+      const record = createAnalysisRecord({
+        appVersion,
+        request: { model, protocol, prompt, preset, source },
+        response: responsePayload
+      });
+      try {
+        logApp("analysis_export_attempt", {
+          provider: exportConfig.provider,
+          model,
+          status: upstream.status,
+          latencyMs: responsePayload.latencyMs
+        });
+        responsePayload.export = await exportAnalysisRecord(record, exportConfig);
+        logApp("analysis_export_success", {
+          provider: responsePayload.export.provider,
+          key: responsePayload.export.key,
+          model,
+          latencyMs: responsePayload.latencyMs
+        });
+      } catch (error) {
+        responsePayload.export = {
+          enabled: true,
+          provider: exportConfig.provider,
+          error: error.message
+        };
+        logApp("analysis_export_error", {
+          provider: exportConfig.provider,
+          model,
+          error: error.message
+        }, "error");
+      }
+    } else {
+      responsePayload.export = { enabled: exportConfig.enabled };
+    }
+
+    if (!res.writableEnded) sendJson(res, upstream.ok ? 200 : upstream.status, responsePayload);
   } catch (error) {
     if (error.name === "AbortError") {
       if (!res.writableEnded) sendJson(res, 499, { error: "LLM request aborted" });
@@ -389,7 +503,12 @@ const server = createServer(async (req, res) => {
     sendJson(res, 200, {
       name: "live-vlm-webui",
       version: appVersion,
-      image: `quay.io/fcalomen/ntt-lvm:${appVersion}`
+      image: `quay.io/fcalomen/ntt-lvm:${appVersion}`,
+      export: {
+        enabled: exportConfig.enabled,
+        provider: exportConfig.provider || null,
+        configured: isExportConfigured(exportConfig)
+      }
     });
     return;
   }
@@ -397,7 +516,8 @@ const server = createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname === "/healthz") {
     sendJson(res, 200, {
       ok: true,
-      version: appVersion
+      version: appVersion,
+      exportConfigured: isExportConfigured(exportConfig)
     });
     return;
   }
@@ -425,9 +545,23 @@ const server = createServer(async (req, res) => {
 
 server.listen(port, host, () => {
   console.log(`NTT Live VLM ${appVersion} running at http://${host}:${port}`);
+  logApp("analysis_export_config", {
+    enabled: exportConfig.enabled,
+    provider: exportConfig.provider || null,
+    configured: isExportConfigured(exportConfig),
+    prefix: exportConfig.prefix
+  });
 });
 
 process.on("SIGINT", () => {
   for (const id of rtspSessions.keys()) stopRtspSession(id);
   process.exit(0);
 });
+
+function logApp(event, details, level = "log") {
+  console[level](JSON.stringify({
+    ts: new Date().toISOString(),
+    event,
+    ...details
+  }));
+}

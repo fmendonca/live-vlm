@@ -118,9 +118,17 @@ function updateAnalysisControls() {
 
 async function loadCameras() {
   try {
+    assertCameraSupport();
     const devices = await navigator.mediaDevices.enumerateDevices();
     const cameras = devices.filter((device) => device.kind === "videoinput");
     els.cameraSelect.innerHTML = "";
+    if (!cameras.length) {
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = "Camera padrão";
+      els.cameraSelect.append(option);
+      return;
+    }
     cameras.forEach((camera, index) => {
       const option = document.createElement("option");
       option.value = camera.deviceId;
@@ -132,15 +140,27 @@ async function loadCameras() {
   }
 }
 
+function assertCameraSupport() {
+  if (!window.isSecureContext) {
+    throw new Error("A webcam exige HTTPS ou localhost. Acesse a aplicação por uma rota HTTPS do OpenShift.");
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("Este navegador não disponibilizou acesso à webcam. Verifique permissões do browser e política de câmera.");
+  }
+}
+
 async function startWebcam() {
   stopCurrentSource();
+  assertCameraSupport();
   const deviceId = els.cameraSelect.value;
+  const videoConstraints = {
+    width: { ideal: 1280 },
+    height: { ideal: 720 }
+  };
+  if (deviceId) videoConstraints.deviceId = { exact: deviceId };
+
   state.stream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      deviceId: deviceId ? { exact: deviceId } : undefined,
-      width: { ideal: 1280 },
-      height: { ideal: 720 }
-    },
+    video: videoConstraints,
     audio: false
   });
   els.video.srcObject = state.stream;
@@ -240,6 +260,8 @@ async function analyzeOnce() {
         model: els.model.value.trim(),
         apiKey: els.apiKey.value.trim(),
         protocol: els.protocol.value,
+        preset: els.presetSelect.value,
+        source: state.mode,
         prompt: withContext(els.prompt.value.trim()),
         imageDataUrl
       }),
@@ -255,7 +277,9 @@ async function analyzeOnce() {
     }
 
     state.lastAnswer = data.answer;
-    addLog(data.answer, `${data.latencyMs}ms · ${data.endpoint || "endpoint"}`);
+    const exportMeta = data.export?.key ? ` · jsonl ${data.export.key}` : "";
+    const exportError = data.export?.error ? ` · export erro: ${data.export.error}` : "";
+    addLog(data.answer, `${data.latencyMs}ms · ${data.endpoint || "endpoint"}${exportMeta}${exportError}`);
   } catch (error) {
     if (error.name === "AbortError") {
       addLog("Chamada ao LLM interrompida.", "parado");
@@ -277,18 +301,19 @@ async function loadModelsFromEndpoint() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         endpoint: els.endpoint.value.trim(),
-        apiKey: els.apiKey.value.trim()
+        apiKey: els.apiKey.value.trim(),
+        protocol: els.protocol.value
       })
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Falha ao carregar modelos.");
-    if (!data.models.length) throw new Error("O endpoint respondeu, mas não retornou modelos em data[].id.");
+    if (!response.ok) throw new Error(data.hint ? `${data.error}\n${data.hint}` : data.error || "Falha ao carregar modelos.");
+    if (!data.models.length) throw new Error(`O endpoint respondeu, mas não retornou modelos. Endpoint consultado: ${data.endpoint}`);
 
     if (!data.models.includes(els.model.value.trim())) {
       els.model.value = data.models[0];
       persistSettings();
     }
-    addLog(`Modelos vLLM disponíveis:\n${data.models.join("\n")}`, data.endpoint);
+    addLog(`Modelos disponíveis:\n${data.models.join("\n")}`, data.endpoint);
   } catch (error) {
     addLog(error.message, "modelos");
   }
@@ -301,7 +326,7 @@ function withContext(prompt) {
 }
 
 async function validateModelBeforeLoop() {
-  if (els.protocol.value !== "vllm") return;
+  if (!["vllm", "ollama"].includes(els.protocol.value)) return;
   const endpoint = els.endpoint.value.trim();
   const currentModel = els.model.value.trim();
   if (!endpoint || !currentModel) throw new Error("Informe endpoint e modelo antes de iniciar a análise.");
@@ -311,15 +336,16 @@ async function validateModelBeforeLoop() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       endpoint,
-      apiKey: els.apiKey.value.trim()
+      apiKey: els.apiKey.value.trim(),
+      protocol: els.protocol.value
     })
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Não foi possível validar modelos no vLLM.");
+  if (!response.ok) throw new Error(data.error || "Não foi possível validar modelos no endpoint configurado.");
   if (data.models.length && !data.models.includes(currentModel)) {
     els.model.value = data.models[0];
     persistSettings();
-    addLog(`Modelo ajustado para o id publicado pelo vLLM: ${data.models[0]}`, "modelo");
+    addLog(`Modelo ajustado para o id publicado pelo endpoint: ${data.models[0]}`, "modelo");
   }
 }
 
@@ -387,6 +413,16 @@ function restoreSettings() {
   els.prompt.value = saved.prompt || presets[0].prompt;
 }
 
+function applyProtocolDefaults() {
+  if (els.protocol.value === "ollama") {
+    if (!els.endpoint.value.trim()) els.endpoint.value = "http://localhost:11434";
+    if (!els.model.value.trim() || els.model.value === "llama-3.2-11b-vision") els.model.value = "llava:latest";
+  } else if (els.protocol.value === "vllm") {
+    if (els.model.value.trim() === "llava:latest") els.model.value = "llama-3.2-11b-vision";
+  }
+  persistSettings();
+}
+
 function initPresets() {
   for (const preset of presets) {
     const option = document.createElement("option");
@@ -426,6 +462,7 @@ els.presetSelect.addEventListener("change", () => {
   const preset = presets.find((item) => item.id === els.presetSelect.value);
   if (preset) els.prompt.value = preset.prompt;
 });
+els.protocol.addEventListener("change", applyProtocolDefaults);
 document.addEventListener("input", persistSettings);
 document.addEventListener("change", persistSettings);
 window.addEventListener("beforeunload", () => {
