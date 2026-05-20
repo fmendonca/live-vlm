@@ -281,7 +281,8 @@ async function loadModelsFromEndpoint() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         endpoint: els.endpoint.value.trim(),
-        apiKey: els.apiKey.value.trim()
+        apiKey: els.apiKey.value.trim(),
+        protocol: els.protocol.value
       })
     });
     const data = await response.json();
@@ -292,7 +293,7 @@ async function loadModelsFromEndpoint() {
       els.model.value = data.models[0];
       persistSettings();
     }
-    addLog(`Modelos vLLM disponíveis:\n${data.models.join("\n")}`, data.endpoint);
+    addLog(`Modelos disponíveis:\n${data.models.join("\n")}`, data.endpoint);
   } catch (error) {
     addLog(error.message, "modelos");
   }
@@ -305,7 +306,7 @@ function withContext(prompt) {
 }
 
 async function validateModelBeforeLoop() {
-  if (els.protocol.value !== "vllm") return;
+  if (!["vllm", "ollama"].includes(els.protocol.value)) return;
   const endpoint = els.endpoint.value.trim();
   const currentModel = els.model.value.trim();
   if (!endpoint || !currentModel) throw new Error("Informe endpoint e modelo antes de iniciar a análise.");
@@ -315,15 +316,16 @@ async function validateModelBeforeLoop() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       endpoint,
-      apiKey: els.apiKey.value.trim()
+      apiKey: els.apiKey.value.trim(),
+      protocol: els.protocol.value
     })
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Não foi possível validar modelos no vLLM.");
+  if (!response.ok) throw new Error(data.error || "Não foi possível validar modelos no endpoint configurado.");
   if (data.models.length && !data.models.includes(currentModel)) {
     els.model.value = data.models[0];
     persistSettings();
-    addLog(`Modelo ajustado para o id publicado pelo vLLM: ${data.models[0]}`, "modelo");
+    addLog(`Modelo ajustado para o id publicado pelo endpoint: ${data.models[0]}`, "modelo");
   }
 }
 
@@ -391,6 +393,16 @@ function restoreSettings() {
   els.prompt.value = saved.prompt || presets[0].prompt;
 }
 
+function applyProtocolDefaults() {
+  if (els.protocol.value === "ollama") {
+    if (!els.endpoint.value.trim()) els.endpoint.value = "http://localhost:11434";
+    if (!els.model.value.trim() || els.model.value === "llama-3.2-11b-vision") els.model.value = "llava:latest";
+  } else if (els.protocol.value === "vllm") {
+    if (els.model.value.trim() === "llava:latest") els.model.value = "llama-3.2-11b-vision";
+  }
+  persistSettings();
+}
+
 function initPresets() {
   for (const preset of presets) {
     const option = document.createElement("option");
@@ -430,6 +442,7 @@ els.presetSelect.addEventListener("change", () => {
   const preset = presets.find((item) => item.id === els.presetSelect.value);
   if (preset) els.prompt.value = preset.prompt;
 });
+els.protocol.addEventListener("change", applyProtocolDefaults);
 document.addEventListener("input", persistSettings);
 document.addEventListener("change", persistSettings);
 window.addEventListener("beforeunload", () => {

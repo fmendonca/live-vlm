@@ -1,6 +1,6 @@
 # NTT Live VLM
 
-Versão: `0.1.10`
+Versão: `0.1.11`
 
 Interface web para analisar frames de webcam ou RTSP em tempo quase real usando um endpoint VLM, incluindo modelos como `llama-3.2-11b-vision`.
 
@@ -10,7 +10,7 @@ Interface web para analisar frames de webcam ou RTSP em tempo quase real usando 
 - Proxy RTSP via FFmpeg com preview MJPEG.
 - Snapshot periódico enviado ao modelo.
 - Presets de prompt para segurança, indústria, varejo e tráfego.
-- Endpoint configurável com modo vLLM/OpenAI-compatible vision ou JSON simples.
+- Endpoint configurável com modo vLLM/OpenAI-compatible vision, Ollama local ou JSON simples.
 - Histórico de observações com latência.
 - Exportação opcional de cada análise em JSONL para Azure Blob ou S3.
 
@@ -52,6 +52,16 @@ Se o seu servidor do modelo vision usa outro contrato, selecione `JSON simples`,
   "image": "base64..."
 }
 ```
+
+### Ollama local
+
+Selecione `Ollama local` no campo `Protocolo` e use o endpoint base do Ollama:
+
+```bash
+http://localhost:11434
+```
+
+No container/OpenShift, `localhost` é o próprio pod. Para acessar um Ollama fora do pod, use o endereço do serviço/rede, por exemplo `http://ollama.default.svc:11434` ou o host exposto. A WebUI lista modelos com `GET /api/tags` e envia imagens para `POST /api/chat` com `stream:false`.
 
 ## RTSP
 
@@ -99,9 +109,9 @@ Quando a exportação está ligada, os logs do container incluem eventos JSON es
 ## Container
 
 ```bash
-podman build --platform linux/amd64 -t quay.io/fcalomen/ntt-lvm:0.1.10 .
-podman run --rm -p 3000:3000 quay.io/fcalomen/ntt-lvm:0.1.10
-podman push quay.io/fcalomen/ntt-lvm:0.1.10
+podman build --platform linux/amd64 -t quay.io/fcalomen/ntt-lvm:0.1.11 .
+podman run --rm -p 3000:3000 quay.io/fcalomen/ntt-lvm:0.1.11
+podman push quay.io/fcalomen/ntt-lvm:0.1.11
 ```
 
 ## OpenShift

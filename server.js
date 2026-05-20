@@ -8,7 +8,7 @@ import { createAnalysisRecord, exportAnalysisRecord, getExportConfig, isExportCo
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = join(__dirname, "public");
-const appVersion = process.env.APP_VERSION || "0.1.10";
+const appVersion = process.env.APP_VERSION || "0.1.11";
 const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 3000);
 const rtspSessions = new Map();
@@ -133,11 +133,60 @@ function normalizeOpenAiUrl(endpoint, resource) {
   return url.toString();
 }
 
+function normalizeOllamaUrl(endpoint, resource) {
+  const url = new URL(endpoint);
+  const path = url.pathname.replace(/\/+$/, "");
+
+  if (resource === "models") {
+    if (path.endsWith("/api/tags")) return url.toString();
+    if (path.endsWith("/api/chat")) {
+      url.pathname = path.replace(/\/chat$/, "/tags");
+      return url.toString();
+    }
+    if (path.endsWith("/api")) {
+      url.pathname = `${path}/tags`;
+      return url.toString();
+    }
+    url.pathname = `${path}/api/tags`;
+    return url.toString();
+  }
+
+  if (path.endsWith("/api/chat")) return url.toString();
+  if (path.endsWith("/api/tags")) {
+    url.pathname = path.replace(/\/tags$/, "/chat");
+    return url.toString();
+  }
+  if (path.endsWith("/api")) {
+    url.pathname = `${path}/chat`;
+    return url.toString();
+  }
+  url.pathname = `${path}/api/chat`;
+  return url.toString();
+}
+
+function buildOllamaPayload({ model, prompt, imageDataUrl }) {
+  return {
+    model: model || "llava:latest",
+    stream: false,
+    messages: [
+      {
+        role: "user",
+        content: prompt,
+        images: [imageDataUrl.replace(/^data:image\/\w+;base64,/, "")]
+      }
+    ],
+    options: {
+      temperature: 0.2
+    }
+  };
+}
+
 async function handleModels(req, res) {
   try {
     const body = await readBody(req);
     const endpoint = String(body.endpoint || "").trim();
     const apiKey = String(body.apiKey || "").trim();
+    const protocol = body.protocol === "ollama" ? "ollama" : "vllm";
 
     if (!endpoint) {
       sendJson(res, 400, { error: "endpoint is required" });
@@ -147,7 +196,9 @@ async function handleModels(req, res) {
     const headers = {};
     if (apiKey) headers.authorization = `Bearer ${apiKey}`;
 
-    const modelsUrl = normalizeOpenAiUrl(endpoint, "models");
+    const modelsUrl = protocol === "ollama"
+      ? normalizeOllamaUrl(endpoint, "models")
+      : normalizeOpenAiUrl(endpoint, "models");
     const upstream = await fetch(modelsUrl, { method: "GET", headers });
     const text = await upstream.text();
     let parsed;
@@ -157,9 +208,9 @@ async function handleModels(req, res) {
       parsed = { raw: text };
     }
 
-    const models = Array.isArray(parsed?.data)
-      ? parsed.data.map((item) => item.id).filter(Boolean)
-      : [];
+    const models = protocol === "ollama"
+      ? (Array.isArray(parsed?.models) ? parsed.models.map((item) => item.name).filter(Boolean) : [])
+      : (Array.isArray(parsed?.data) ? parsed.data.map((item) => item.id).filter(Boolean) : []);
 
     sendJson(res, upstream.ok ? 200 : upstream.status, {
       ok: upstream.ok,
@@ -187,7 +238,7 @@ async function handleAnalyze(req, res) {
     const imageDataUrl = String(body.imageDataUrl || "").trim();
     const apiKey = String(body.apiKey || "").trim();
     const model = String(body.model || "llama-3.2-11b-vision").trim();
-    const protocol = body.protocol === "generic" ? "generic" : "vllm";
+    const protocol = ["generic", "ollama"].includes(body.protocol) ? body.protocol : "vllm";
     const preset = String(body.preset || "").trim();
     const source = String(body.source || "").trim();
 
@@ -207,6 +258,8 @@ async function handleAnalyze(req, res) {
     const payload =
       protocol === "vllm"
         ? buildOpenAiPayload({ model, prompt, imageDataUrl })
+        : protocol === "ollama"
+          ? buildOllamaPayload({ model, prompt, imageDataUrl })
         : {
             model,
             prompt,
@@ -214,7 +267,11 @@ async function handleAnalyze(req, res) {
           };
 
     const startedAt = Date.now();
-    const upstreamUrl = protocol === "vllm" ? normalizeOpenAiUrl(endpoint, "chat") : endpoint;
+    const upstreamUrl = protocol === "vllm"
+      ? normalizeOpenAiUrl(endpoint, "chat")
+      : protocol === "ollama"
+        ? normalizeOllamaUrl(endpoint, "chat")
+        : endpoint;
     const upstream = await fetch(upstreamUrl, {
       method: "POST",
       headers,
@@ -233,6 +290,7 @@ async function handleAnalyze(req, res) {
     const answer =
       parsed?.choices?.[0]?.message?.content ||
       parsed?.choices?.[0]?.text ||
+      parsed?.message?.content ||
       parsed?.answer ||
       parsed?.response ||
       parsed?.raw ||
