@@ -8,7 +8,7 @@ import { createAnalysisRecord, exportAnalysisRecord, getExportConfig, isExportCo
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = join(__dirname, "public");
-const appVersion = process.env.APP_VERSION || "0.1.9";
+const appVersion = process.env.APP_VERSION || "0.1.10";
 const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 3000);
 const rtspSessions = new Map();
@@ -254,14 +254,30 @@ async function handleAnalyze(req, res) {
         response: responsePayload
       });
       try {
+        logApp("analysis_export_attempt", {
+          provider: exportConfig.provider,
+          model,
+          status: upstream.status,
+          latencyMs: responsePayload.latencyMs
+        });
         responsePayload.export = await exportAnalysisRecord(record, exportConfig);
+        logApp("analysis_export_success", {
+          provider: responsePayload.export.provider,
+          key: responsePayload.export.key,
+          model,
+          latencyMs: responsePayload.latencyMs
+        });
       } catch (error) {
         responsePayload.export = {
           enabled: true,
           provider: exportConfig.provider,
           error: error.message
         };
-        console.error(`Analysis export failed: ${error.message}`);
+        logApp("analysis_export_error", {
+          provider: exportConfig.provider,
+          model,
+          error: error.message
+        }, "error");
       }
     } else {
       responsePayload.export = { enabled: exportConfig.enabled };
@@ -457,9 +473,23 @@ const server = createServer(async (req, res) => {
 
 server.listen(port, host, () => {
   console.log(`NTT Live VLM ${appVersion} running at http://${host}:${port}`);
+  logApp("analysis_export_config", {
+    enabled: exportConfig.enabled,
+    provider: exportConfig.provider || null,
+    configured: isExportConfigured(exportConfig),
+    prefix: exportConfig.prefix
+  });
 });
 
 process.on("SIGINT", () => {
   for (const id of rtspSessions.keys()) stopRtspSession(id);
   process.exit(0);
 });
+
+function logApp(event, details, level = "log") {
+  console[level](JSON.stringify({
+    ts: new Date().toISOString(),
+    event,
+    ...details
+  }));
+}

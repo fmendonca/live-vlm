@@ -1,6 +1,6 @@
 # NTT Live VLM
 
-Versão: `0.1.9`
+Versão: `0.1.10`
 
 Interface web para analisar frames de webcam ou RTSP em tempo quase real usando um endpoint VLM, incluindo modelos como `llama-3.2-11b-vision`.
 
@@ -87,12 +87,21 @@ AWS_SECRET_ACCESS_KEY=...
 # opcional para S3 compatível: AWS_S3_ENDPOINT=https://s3.example.com
 ```
 
+Quando a exportação está ligada, os logs do container incluem eventos JSON estruturados:
+
+```json
+{"event":"analysis_export_config","enabled":true,"provider":"azure","configured":true}
+{"event":"analysis_export_upload_start","provider":"azure","key":"analysis/2026-05-20/...jsonl","bytes":1234}
+{"event":"analysis_export_target","provider":"azure","accountHost":"account.blob.core.windows.net","key":"analysis/2026-05-20/...jsonl"}
+{"event":"analysis_export_success","provider":"azure","key":"analysis/2026-05-20/...jsonl"}
+```
+
 ## Container
 
 ```bash
-podman build --platform linux/amd64 -t quay.io/fcalomen/ntt-lvm:0.1.9 .
-podman run --rm -p 3000:3000 quay.io/fcalomen/ntt-lvm:0.1.9
-podman push quay.io/fcalomen/ntt-lvm:0.1.9
+podman build --platform linux/amd64 -t quay.io/fcalomen/ntt-lvm:0.1.10 .
+podman run --rm -p 3000:3000 quay.io/fcalomen/ntt-lvm:0.1.10
+podman push quay.io/fcalomen/ntt-lvm:0.1.10
 ```
 
 ## OpenShift

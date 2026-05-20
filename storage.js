@@ -54,6 +54,11 @@ export async function exportAnalysisRecord(record, config = getExportConfig()) {
 
   const objectKey = buildObjectKey(config.prefix, record);
   const body = `${JSON.stringify(record)}\n`;
+  logExport("analysis_export_upload_start", {
+    provider: config.provider,
+    key: objectKey,
+    bytes: Buffer.byteLength(body)
+  });
 
   if (config.provider === "azure") {
     await uploadAzureBlob({ config, objectKey, body });
@@ -79,6 +84,12 @@ async function uploadAzureBlob({ config, objectKey, body }) {
   const sasUrl = new URL(config.azureSasUrl);
   const basePath = sasUrl.pathname.replace(/\/+$/, "");
   sasUrl.pathname = `${basePath}/${objectKey.split("/").map(encodeURIComponent).join("/")}`;
+  logExport("analysis_export_target", {
+    provider: "azure",
+    accountHost: sasUrl.host,
+    containerPath: basePath || "/",
+    key: objectKey
+  });
 
   const response = await fetch(sasUrl, {
     method: "PUT",
@@ -102,6 +113,13 @@ async function uploadS3Object({ config, objectKey, body }) {
   const host = s3Host(config);
   const encodedKey = objectKey.split("/").map(encodeURIComponent).join("/");
   const url = s3Url(config, encodedKey);
+  logExport("analysis_export_target", {
+    provider: "s3",
+    bucket: config.s3Bucket,
+    region: config.s3Region,
+    endpointHost: host,
+    key: objectKey
+  });
   const headers = {
     host,
     "content-type": "application/x-ndjson",
@@ -175,4 +193,12 @@ function signingKey(secret, dateStamp, region) {
 
 function toAmzDate(date) {
   return date.toISOString().replace(/[:-]|\.\d{3}/g, "");
+}
+
+function logExport(event, details) {
+  console.log(JSON.stringify({
+    ts: new Date().toISOString(),
+    event,
+    ...details
+  }));
 }
