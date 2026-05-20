@@ -1,6 +1,6 @@
 # NTT Live VLM
 
-Versão: `0.1.8`
+Versão: `0.1.9`
 
 Interface web para analisar frames de webcam ou RTSP em tempo quase real usando um endpoint VLM, incluindo modelos como `llama-3.2-11b-vision`.
 
@@ -12,6 +12,7 @@ Interface web para analisar frames de webcam ou RTSP em tempo quase real usando 
 - Presets de prompt para segurança, indústria, varejo e tráfego.
 - Endpoint configurável com modo vLLM/OpenAI-compatible vision ou JSON simples.
 - Histórico de observações com latência.
+- Exportação opcional de cada análise em JSONL para Azure Blob ou S3.
 
 ## Como rodar
 
@@ -56,12 +57,42 @@ Se o seu servidor do modelo vision usa outro contrato, selecione `JSON simples`,
 
 O suporte a RTSP depende de `ffmpeg` disponível no PATH. A aplicação cria uma sessão MJPEG local para preview e captura snapshots pelo backend.
 
+## Exportação JSONL
+
+A exportação é desligada por padrão. Quando ligada, cada análise concluída com sucesso gera um objeto `.jsonl` com uma linha JSON e faz upload para Azure Blob ou S3.
+
+Variáveis comuns:
+
+```bash
+ANALYSIS_EXPORT_ENABLED=true
+ANALYSIS_EXPORT_PROVIDER=azure # azure ou s3
+ANALYSIS_EXPORT_PREFIX=analysis
+```
+
+Azure Blob usa uma SAS URL apontando para o container:
+
+```bash
+AZURE_BLOB_SAS_URL='https://account.blob.core.windows.net/container?sv=...'
+```
+
+S3 usa assinatura AWS v4 com variáveis padrão:
+
+```bash
+ANALYSIS_EXPORT_PROVIDER=s3
+AWS_S3_BUCKET=meu-bucket
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+# opcional: AWS_SESSION_TOKEN=...
+# opcional para S3 compatível: AWS_S3_ENDPOINT=https://s3.example.com
+```
+
 ## Container
 
 ```bash
-podman build --platform linux/amd64 -t quay.io/fcalomen/ntt-lvm:0.1.8 .
-podman run --rm -p 3000:3000 quay.io/fcalomen/ntt-lvm:0.1.8
-podman push quay.io/fcalomen/ntt-lvm:0.1.8
+podman build --platform linux/amd64 -t quay.io/fcalomen/ntt-lvm:0.1.9 .
+podman run --rm -p 3000:3000 quay.io/fcalomen/ntt-lvm:0.1.9
+podman push quay.io/fcalomen/ntt-lvm:0.1.9
 ```
 
 ## OpenShift

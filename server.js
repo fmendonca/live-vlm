@@ -4,13 +4,15 @@ import { createServer } from "node:http";
 import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createAnalysisRecord, exportAnalysisRecord, getExportConfig, isExportConfigured } from "./storage.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = join(__dirname, "public");
-const appVersion = process.env.APP_VERSION || "0.1.8";
+const appVersion = process.env.APP_VERSION || "0.1.9";
 const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 3000);
 const rtspSessions = new Map();
+const exportConfig = getExportConfig();
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -186,6 +188,8 @@ async function handleAnalyze(req, res) {
     const apiKey = String(body.apiKey || "").trim();
     const model = String(body.model || "llama-3.2-11b-vision").trim();
     const protocol = body.protocol === "generic" ? "generic" : "vllm";
+    const preset = String(body.preset || "").trim();
+    const source = String(body.source || "").trim();
 
     if (!endpoint || !prompt || !imageDataUrl) {
       sendJson(res, 400, { error: "endpoint, prompt and imageDataUrl are required" });
@@ -234,14 +238,36 @@ async function handleAnalyze(req, res) {
       parsed?.raw ||
       "";
 
-    if (!res.writableEnded) sendJson(res, upstream.ok ? 200 : upstream.status, {
+    const responsePayload = {
       ok: upstream.ok,
       status: upstream.status,
       latencyMs: Date.now() - startedAt,
       endpoint: upstreamUrl,
       answer,
       raw: parsed
-    });
+    };
+
+    if (upstream.ok && exportConfig.enabled) {
+      const record = createAnalysisRecord({
+        appVersion,
+        request: { model, protocol, prompt, preset, source },
+        response: responsePayload
+      });
+      try {
+        responsePayload.export = await exportAnalysisRecord(record, exportConfig);
+      } catch (error) {
+        responsePayload.export = {
+          enabled: true,
+          provider: exportConfig.provider,
+          error: error.message
+        };
+        console.error(`Analysis export failed: ${error.message}`);
+      }
+    } else {
+      responsePayload.export = { enabled: exportConfig.enabled };
+    }
+
+    if (!res.writableEnded) sendJson(res, upstream.ok ? 200 : upstream.status, responsePayload);
   } catch (error) {
     if (error.name === "AbortError") {
       if (!res.writableEnded) sendJson(res, 499, { error: "LLM request aborted" });
@@ -389,7 +415,12 @@ const server = createServer(async (req, res) => {
     sendJson(res, 200, {
       name: "live-vlm-webui",
       version: appVersion,
-      image: `quay.io/fcalomen/ntt-lvm:${appVersion}`
+      image: `quay.io/fcalomen/ntt-lvm:${appVersion}`,
+      export: {
+        enabled: exportConfig.enabled,
+        provider: exportConfig.provider || null,
+        configured: isExportConfigured(exportConfig)
+      }
     });
     return;
   }
@@ -397,7 +428,8 @@ const server = createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname === "/healthz") {
     sendJson(res, 200, {
       ok: true,
-      version: appVersion
+      version: appVersion,
+      exportConfigured: isExportConfigured(exportConfig)
     });
     return;
   }

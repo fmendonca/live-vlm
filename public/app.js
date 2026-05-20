@@ -240,6 +240,8 @@ async function analyzeOnce() {
         model: els.model.value.trim(),
         apiKey: els.apiKey.value.trim(),
         protocol: els.protocol.value,
+        preset: els.presetSelect.value,
+        source: state.mode,
         prompt: withContext(els.prompt.value.trim()),
         imageDataUrl
       }),
@@ -255,7 +257,9 @@ async function analyzeOnce() {
     }
 
     state.lastAnswer = data.answer;
-    addLog(data.answer, `${data.latencyMs}ms · ${data.endpoint || "endpoint"}`);
+    const exportMeta = data.export?.key ? ` · jsonl ${data.export.key}` : "";
+    const exportError = data.export?.error ? ` · export erro: ${data.export.error}` : "";
+    addLog(data.answer, `${data.latencyMs}ms · ${data.endpoint || "endpoint"}${exportMeta}${exportError}`);
   } catch (error) {
     if (error.name === "AbortError") {
       addLog("Chamada ao LLM interrompida.", "parado");
