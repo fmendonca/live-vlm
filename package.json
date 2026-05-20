@@ -1,6 +1,6 @@
 {
   "name": "live-vlm-webui",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "private": true,
   "description": "Web interface for realtime webcam/RTSP visual analysis with a VLM endpoint such as llama-3.2-11b-vision.",
   "type": "module",

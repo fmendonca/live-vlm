@@ -8,7 +8,7 @@ import { createAnalysisRecord, exportAnalysisRecord, getExportConfig, isExportCo
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = join(__dirname, "public");
-const appVersion = process.env.APP_VERSION || "0.1.11";
+const appVersion = process.env.APP_VERSION || "0.1.12";
 const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 3000);
 const rtspSessions = new Map();
@@ -102,8 +102,15 @@ function buildOpenAiPayload({ model, prompt, imageDataUrl }) {
   };
 }
 
+function normalizeEndpointInput(endpoint) {
+  const value = String(endpoint || "").trim();
+  if (!value) return value;
+  if (/^https?:\/\//i.test(value)) return value;
+  return `http://${value}`;
+}
+
 function normalizeOpenAiUrl(endpoint, resource) {
-  const url = new URL(endpoint);
+  const url = new URL(normalizeEndpointInput(endpoint));
   const path = url.pathname.replace(/\/+$/, "");
 
   if (resource === "models") {
@@ -134,7 +141,7 @@ function normalizeOpenAiUrl(endpoint, resource) {
 }
 
 function normalizeOllamaUrl(endpoint, resource) {
-  const url = new URL(endpoint);
+  const url = new URL(normalizeEndpointInput(endpoint));
   const path = url.pathname.replace(/\/+$/, "");
 
   if (resource === "models") {
@@ -182,6 +189,7 @@ function buildOllamaPayload({ model, prompt, imageDataUrl }) {
 }
 
 async function handleModels(req, res) {
+  let modelsUrl = "";
   try {
     const body = await readBody(req);
     const endpoint = String(body.endpoint || "").trim();
@@ -196,9 +204,10 @@ async function handleModels(req, res) {
     const headers = {};
     if (apiKey) headers.authorization = `Bearer ${apiKey}`;
 
-    const modelsUrl = protocol === "ollama"
+    modelsUrl = protocol === "ollama"
       ? normalizeOllamaUrl(endpoint, "models")
       : normalizeOpenAiUrl(endpoint, "models");
+    logApp("models_load_attempt", { protocol, endpoint: modelsUrl });
     const upstream = await fetch(modelsUrl, { method: "GET", headers });
     const text = await upstream.text();
     let parsed;
@@ -220,7 +229,12 @@ async function handleModels(req, res) {
       raw: parsed
     });
   } catch (error) {
-    sendJson(res, 500, { error: error.message });
+    logApp("models_load_error", { endpoint: modelsUrl || null, error: error.message }, "error");
+    sendJson(res, 500, {
+      error: error.message,
+      endpoint: modelsUrl || null,
+      hint: "Para Ollama, use algo como http://IP:11434 ou IP:11434. O servidor da WebUI precisa conseguir acessar esse IP pela rede."
+    });
   }
 }
 

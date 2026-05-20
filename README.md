@@ -1,6 +1,6 @@
 # NTT Live VLM
 
-Versão: `0.1.11`
+Versão: `0.1.12`
 
 Interface web para analisar frames de webcam ou RTSP em tempo quase real usando um endpoint VLM, incluindo modelos como `llama-3.2-11b-vision`.
 
@@ -61,7 +61,7 @@ Selecione `Ollama local` no campo `Protocolo` e use o endpoint base do Ollama:
 http://localhost:11434
 ```
 
-No container/OpenShift, `localhost` é o próprio pod. Para acessar um Ollama fora do pod, use o endereço do serviço/rede, por exemplo `http://ollama.default.svc:11434` ou o host exposto. A WebUI lista modelos com `GET /api/tags` e envia imagens para `POST /api/chat` com `stream:false`.
+No container/OpenShift, `localhost` é o próprio pod. Para acessar um Ollama fora do pod, use o endereço do serviço/rede, por exemplo `http://ollama.default.svc:11434` ou o host exposto. Também é aceito digitar apenas `IP:11434`; a aplicação normaliza para `http://IP:11434`. A WebUI lista modelos com `GET /api/tags` e envia imagens para `POST /api/chat` com `stream:false`.
 
 ## RTSP
 
@@ -109,9 +109,9 @@ Quando a exportação está ligada, os logs do container incluem eventos JSON es
 ## Container
 
 ```bash
-podman build --platform linux/amd64 -t quay.io/fcalomen/ntt-lvm:0.1.11 .
-podman run --rm -p 3000:3000 quay.io/fcalomen/ntt-lvm:0.1.11
-podman push quay.io/fcalomen/ntt-lvm:0.1.11
+podman build --platform linux/amd64 -t quay.io/fcalomen/ntt-lvm:0.1.12 .
+podman run --rm -p 3000:3000 quay.io/fcalomen/ntt-lvm:0.1.12
+podman push quay.io/fcalomen/ntt-lvm:0.1.12
 ```
 
 ## OpenShift

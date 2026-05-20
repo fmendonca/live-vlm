@@ -286,8 +286,8 @@ async function loadModelsFromEndpoint() {
       })
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Falha ao carregar modelos.");
-    if (!data.models.length) throw new Error("O endpoint respondeu, mas não retornou modelos em data[].id.");
+    if (!response.ok) throw new Error(data.hint ? `${data.error}\n${data.hint}` : data.error || "Falha ao carregar modelos.");
+    if (!data.models.length) throw new Error(`O endpoint respondeu, mas não retornou modelos. Endpoint consultado: ${data.endpoint}`);
 
     if (!data.models.includes(els.model.value.trim())) {
       els.model.value = data.models[0];
