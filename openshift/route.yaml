@@ -1,0 +1,16 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ntt-lvm
+  labels:
+    app: ntt-lvm
+    app.kubernetes.io/name: ntt-lvm
+spec:
+  to:
+    kind: Service
+    name: ntt-lvm
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

@@ -1,0 +1,15 @@
+{
+  "name": "live-vlm-webui",
+  "version": "0.1.8",
+  "private": true,
+  "description": "Web interface for realtime webcam/RTSP visual analysis with a VLM endpoint such as llama-3.2-11b-vision.",
+  "type": "module",
+  "scripts": {
+    "dev": "HOST=127.0.0.1 node server.js",
+    "start": "node server.js",
+    "version:show": "node -e \"console.log(require('./package.json').version)\""
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

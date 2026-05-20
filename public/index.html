@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NTT Live VLM</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">V</span>
+          <div>
+            <h1>NTT Live VLM</h1>
+            <p>vLLM vision realtime analysis · <span id="appVersion">v0.1.8</span></p>
+          </div>
+        </div>
+
+        <section class="partner-strip" aria-label="Parceria tecnológica">
+          <span class="partner-eyebrow">Em parceria com</span>
+          <div class="partner-logo primary-logo">
+            <img src="/assets/nttdata-logo.png" alt="NTT DATA" />
+          </div>
+          <div class="partner-row">
+            <div class="partner-logo">
+              <img src="/assets/nvidia-logo-new.png" alt="NVIDIA" />
+            </div>
+            <div class="partner-logo">
+              <img src="/assets/redhat-openshift-logo.png" alt="Red Hat OpenShift" />
+            </div>
+            <div class="partner-logo">
+              <img src="/assets/cisco-logo.png" alt="Cisco" />
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Fonte</h2>
+          <div class="segmented" role="tablist" aria-label="Fonte de video">
+            <button id="webcamMode" class="active" type="button">Webcam</button>
+            <button id="rtspMode" type="button">RTSP</button>
+          </div>
+
+          <label class="field webcam-only">
+            Camera
+            <select id="cameraSelect"></select>
+          </label>
+
+          <label class="field rtsp-only hidden">
+            URL RTSP
+            <input id="rtspUrl" type="url" placeholder="rtsp://usuario:senha@host:554/stream" />
+          </label>
+
+          <div class="button-row">
+            <button id="startSource" class="primary" type="button">Iniciar</button>
+            <button id="stopSource" type="button">Parar</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Modelo</h2>
+          <label class="field">
+            Endpoint
+            <input id="endpoint" type="url" placeholder="http://vllm:8000 ou http://vllm:8000/v1" />
+          </label>
+          <label class="field">
+            Modelo
+            <input id="model" type="text" value="llama-3.2-11b-vision" />
+          </label>
+          <button id="loadModels" type="button">Carregar modelos</button>
+          <label class="field">
+            API key
+            <input id="apiKey" type="password" placeholder="opcional" />
+          </label>
+          <label class="field">
+            Protocolo
+            <select id="protocol">
+              <option value="vllm">vLLM / OpenAI vision</option>
+              <option value="generic">JSON simples</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="panel">
+          <h2>Análise</h2>
+          <label class="field">
+            Preset
+            <select id="presetSelect"></select>
+          </label>
+          <label class="field">
+            Prompt
+            <textarea id="prompt" rows="7"></textarea>
+          </label>
+          <label class="field">
+            Intervalo: <strong id="intervalLabel">2.0s</strong>
+            <input id="interval" type="range" min="500" max="10000" step="500" value="2000" />
+          </label>
+          <div class="analysis-actions">
+            <button id="startAnalysis" class="primary" type="button">Analisar</button>
+            <button id="stopAnalysis" type="button">Pausar</button>
+            <button id="abortAnalysis" class="danger" type="button">Parar</button>
+          </div>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <header class="topbar">
+          <div class="topbar-status">
+            <span id="sourceStatus" class="status idle">fonte parada</span>
+            <span id="analysisStatus" class="status idle">análise pausada</span>
+          </div>
+          <div class="topbar-logos" aria-label="Parceria tecnológica">
+            <span>Powered by</span>
+            <img src="/assets/nttdata-logo.png" alt="NTT DATA" />
+            <img src="/assets/nvidia-logo-new.png" alt="NVIDIA" />
+            <img src="/assets/redhat-openshift-logo.png" alt="Red Hat OpenShift" />
+            <img src="/assets/cisco-logo.png" alt="Cisco" />
+          </div>
+          <button id="singleShot" type="button">Snapshot</button>
+        </header>
+
+        <div class="stage">
+          <video id="video" autoplay muted playsinline></video>
+          <img id="rtspPreview" class="hidden" alt="RTSP preview" />
+          <canvas id="captureCanvas" class="hidden"></canvas>
+          <div id="emptyState" class="empty-state">
+            <strong>Nenhuma fonte ativa</strong>
+            <span>Inicie a webcam ou conecte uma URL RTSP para começar.</span>
+          </div>
+        </div>
+
+        <section class="results">
+          <div class="results-head">
+            <h2>Observações</h2>
+            <button id="clearLog" type="button">Limpar</button>
+          </div>
+          <div id="log" class="log"></div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
