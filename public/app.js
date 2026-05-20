@@ -118,9 +118,17 @@ function updateAnalysisControls() {
 
 async function loadCameras() {
   try {
+    assertCameraSupport();
     const devices = await navigator.mediaDevices.enumerateDevices();
     const cameras = devices.filter((device) => device.kind === "videoinput");
     els.cameraSelect.innerHTML = "";
+    if (!cameras.length) {
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = "Camera padrão";
+      els.cameraSelect.append(option);
+      return;
+    }
     cameras.forEach((camera, index) => {
       const option = document.createElement("option");
       option.value = camera.deviceId;
@@ -132,15 +140,27 @@ async function loadCameras() {
   }
 }
 
+function assertCameraSupport() {
+  if (!window.isSecureContext) {
+    throw new Error("A webcam exige HTTPS ou localhost. Acesse a aplicação por uma rota HTTPS do OpenShift.");
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("Este navegador não disponibilizou acesso à webcam. Verifique permissões do browser e política de câmera.");
+  }
+}
+
 async function startWebcam() {
   stopCurrentSource();
+  assertCameraSupport();
   const deviceId = els.cameraSelect.value;
+  const videoConstraints = {
+    width: { ideal: 1280 },
+    height: { ideal: 720 }
+  };
+  if (deviceId) videoConstraints.deviceId = { exact: deviceId };
+
   state.stream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      deviceId: deviceId ? { exact: deviceId } : undefined,
-      width: { ideal: 1280 },
-      height: { ideal: 720 }
-    },
+    video: videoConstraints,
     audio: false
   });
   els.video.srcObject = state.stream;

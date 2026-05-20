@@ -1,6 +1,6 @@
 # NTT Live VLM
 
-Versão: `0.1.12`
+Versão: `0.1.13`
 
 Interface web para analisar frames de webcam ou RTSP em tempo quase real usando um endpoint VLM, incluindo modelos como `llama-3.2-11b-vision`.
 
@@ -21,6 +21,10 @@ npm run dev
 ```
 
 Acesse `http://localhost:3000`.
+
+## Webcam no navegador
+
+A webcam é acessada pelo browser do usuário, não pelo container. Por segurança, navegadores só liberam `getUserMedia` em `localhost` ou páginas HTTPS. Em OpenShift, use a `Route` HTTPS. Se abrir a aplicação por IP/HTTP, o navegador pode bloquear a câmera.
 
 ## Configuração do modelo
 
@@ -109,9 +113,9 @@ Quando a exportação está ligada, os logs do container incluem eventos JSON es
 ## Container
 
 ```bash
-podman build --platform linux/amd64 -t quay.io/fcalomen/ntt-lvm:0.1.12 .
-podman run --rm -p 3000:3000 quay.io/fcalomen/ntt-lvm:0.1.12
-podman push quay.io/fcalomen/ntt-lvm:0.1.12
+podman build --platform linux/amd64 -t quay.io/fcalomen/ntt-lvm:0.1.13 .
+podman run --rm -p 3000:3000 quay.io/fcalomen/ntt-lvm:0.1.13
+podman push quay.io/fcalomen/ntt-lvm:0.1.13
 ```
 
 ## OpenShift

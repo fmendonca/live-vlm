@@ -6,4 +6,4 @@ resources:
   - route.yaml
 images:
   - name: quay.io/fcalomen/ntt-lvm
-    newTag: 0.1.12
+    newTag: 0.1.13

@@ -8,7 +8,7 @@ import { createAnalysisRecord, exportAnalysisRecord, getExportConfig, isExportCo
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = join(__dirname, "public");
-const appVersion = process.env.APP_VERSION || "0.1.12";
+const appVersion = process.env.APP_VERSION || "0.1.13";
 const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 3000);
 const rtspSessions = new Map();
