@@ -325,7 +325,7 @@ async function loadModelsFromEndpoint() {
 }
 
 async function validateModelBeforeLoop() {
-  if (!["vllm", "ollama"].includes(els.protocol.value)) return;
+  if (!["azure", "vllm", "ollama"].includes(els.protocol.value)) return;
   const endpoint = els.endpoint.value.trim();
   const currentModel = els.model.value.trim();
   if (!endpoint) throw new Error("Informe endpoint antes de iniciar a análise.");
@@ -417,7 +417,7 @@ function applyProtocolDefaults() {
   if (els.protocol.value === "ollama") {
     if (!els.endpoint.value.trim()) els.endpoint.value = "http://localhost:11434";
     if (!els.model.value.trim() || els.model.value === "llama-3.2-11b-vision") els.model.value = "llava:latest";
-  } else if (els.protocol.value === "vllm") {
+  } else if (["azure", "vllm"].includes(els.protocol.value)) {
     if (els.model.value.trim() === "llava:latest") els.model.value = "llama-3.2-11b-vision";
   }
   persistSettings();

@@ -13,6 +13,7 @@ const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 3000);
 const rtspSessions = new Map();
 const exportConfig = getExportConfig();
+const defaultAzureApiVersion = process.env.AZURE_OPENAI_API_VERSION || "2024-12-01-preview";
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -102,6 +103,21 @@ function buildOpenAiPayload({ model, prompt, imageDataUrl }) {
   };
 }
 
+function buildAzurePayload({ prompt, imageDataUrl }) {
+  return {
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: prompt },
+          { type: "image_url", image_url: { url: imageDataUrl } }
+        ]
+      }
+    ],
+    max_completion_tokens: 500
+  };
+}
+
 function normalizeEndpointInput(endpoint) {
   const value = String(endpoint || "").trim();
   if (!value) return value;
@@ -137,6 +153,28 @@ function normalizeOpenAiUrl(endpoint, resource) {
     return url.toString();
   }
   url.pathname = `${path}/v1/chat/completions`;
+  return url.toString();
+}
+
+function normalizeAzureUrl(endpoint, deployment) {
+  const url = new URL(normalizeEndpointInput(endpoint));
+  const path = url.pathname.replace(/\/+$/, "");
+  const encodedDeployment = encodeURIComponent(deployment);
+
+  if (!url.searchParams.has("api-version")) {
+    url.searchParams.set("api-version", defaultAzureApiVersion);
+  }
+
+  if (path.endsWith("/chat/completions") && path.includes("/openai/deployments/")) {
+    return url.toString();
+  }
+
+  if (path.includes("/openai/deployments/")) {
+    url.pathname = `${path}/chat/completions`;
+    return url.toString();
+  }
+
+  url.pathname = `${path}/openai/deployments/${encodedDeployment}/chat/completions`;
   return url.toString();
 }
 
@@ -194,10 +232,17 @@ async function handleModels(req, res) {
     const body = await readBody(req);
     const endpoint = String(body.endpoint || "").trim();
     const apiKey = String(body.apiKey || "").trim();
-    const protocol = body.protocol === "ollama" ? "ollama" : "vllm";
+    const protocol = ["azure", "ollama"].includes(body.protocol) ? body.protocol : "vllm";
 
     if (!endpoint) {
       sendJson(res, 400, { error: "endpoint is required" });
+      return;
+    }
+
+    if (protocol === "azure") {
+      sendJson(res, 400, {
+        error: "Azure OpenAI não expõe uma listagem /models compatível aqui. Informe o deployment/modelo manualmente."
+      });
       return;
     }
 
@@ -251,8 +296,9 @@ async function handleAnalyze(req, res) {
     const prompt = String(body.prompt || "").trim();
     const imageDataUrl = String(body.imageDataUrl || "").trim();
     const apiKey = String(body.apiKey || "").trim();
-    const model = String(body.model || "llama-3.2-11b-vision").trim();
-    const protocol = ["generic", "ollama"].includes(body.protocol) ? body.protocol : "vllm";
+    const model = String(body.model || "").trim();
+    const effectiveModel = model || "llama-3.2-11b-vision";
+    const protocol = ["azure", "generic", "ollama"].includes(body.protocol) ? body.protocol : "vllm";
     const preset = String(body.preset || "").trim();
     const source = String(body.source || "").trim();
 
@@ -266,26 +312,38 @@ async function handleAnalyze(req, res) {
       return;
     }
 
+    if (protocol === "azure" && !model) {
+      sendJson(res, 400, { error: "Azure OpenAI requires a deployment/model name." });
+      return;
+    }
+
     const headers = { "content-type": "application/json" };
-    if (apiKey) headers.authorization = `Bearer ${apiKey}`;
+    if (apiKey) {
+      if (protocol === "azure") headers["api-key"] = apiKey;
+      else headers.authorization = `Bearer ${apiKey}`;
+    }
 
     const payload =
-      protocol === "vllm"
-        ? buildOpenAiPayload({ model, prompt, imageDataUrl })
+      protocol === "azure"
+        ? buildAzurePayload({ prompt, imageDataUrl })
+        : protocol === "vllm"
+          ? buildOpenAiPayload({ model: effectiveModel, prompt, imageDataUrl })
         : protocol === "ollama"
-          ? buildOllamaPayload({ model, prompt, imageDataUrl })
+          ? buildOllamaPayload({ model: effectiveModel, prompt, imageDataUrl })
         : {
-            model,
+            model: effectiveModel,
             prompt,
             image: imageDataUrl.replace(/^data:image\/\w+;base64,/, "")
           };
 
     const startedAt = Date.now();
-    const upstreamUrl = protocol === "vllm"
-      ? normalizeOpenAiUrl(endpoint, "chat")
-      : protocol === "ollama"
-        ? normalizeOllamaUrl(endpoint, "chat")
-        : endpoint;
+    const upstreamUrl = protocol === "azure"
+      ? normalizeAzureUrl(endpoint, model)
+      : protocol === "vllm"
+        ? normalizeOpenAiUrl(endpoint, "chat")
+        : protocol === "ollama"
+          ? normalizeOllamaUrl(endpoint, "chat")
+          : endpoint;
     const upstream = await fetch(upstreamUrl, {
       method: "POST",
       headers,
@@ -328,7 +386,7 @@ async function handleAnalyze(req, res) {
       try {
         logApp("analysis_export_attempt", {
           provider: exportConfig.provider,
-          model,
+          model: effectiveModel,
           status: upstream.status,
           latencyMs: responsePayload.latencyMs
         });
@@ -336,7 +394,7 @@ async function handleAnalyze(req, res) {
         logApp("analysis_export_success", {
           provider: responsePayload.export.provider,
           key: responsePayload.export.key,
-          model,
+          model: effectiveModel,
           latencyMs: responsePayload.latencyMs
         });
       } catch (error) {
@@ -347,7 +405,7 @@ async function handleAnalyze(req, res) {
         };
         logApp("analysis_export_error", {
           provider: exportConfig.provider,
-          model,
+          model: effectiveModel,
           error: error.message
         }, "error");
       }

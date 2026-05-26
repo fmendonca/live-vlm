@@ -62,7 +62,7 @@
           <h2>Modelo</h2>
           <label class="field">
             Endpoint
-            <input id="endpoint" type="text" placeholder="vLLM: http://host:8000/v1 · Ollama: IP:11434 ou http://IP:11434" />
+            <input id="endpoint" type="text" placeholder="vLLM: http://host:8000/v1 · Azure: https://resource.openai.azure.com · Ollama: IP:11434" />
           </label>
           <label class="field">
             Modelo
@@ -77,6 +77,7 @@
             Protocolo
             <select id="protocol">
               <option value="vllm">vLLM / OpenAI vision</option>
+              <option value="azure">Azure OpenAI</option>
               <option value="ollama">Ollama local</option>
               <option value="generic">JSON simples</option>
             </select>
