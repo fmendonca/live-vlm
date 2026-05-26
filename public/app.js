@@ -328,7 +328,8 @@ async function validateModelBeforeLoop() {
   if (!["vllm", "ollama"].includes(els.protocol.value)) return;
   const endpoint = els.endpoint.value.trim();
   const currentModel = els.model.value.trim();
-  if (!endpoint || !currentModel) throw new Error("Informe endpoint e modelo antes de iniciar a análise.");
+  if (!endpoint) throw new Error("Informe endpoint antes de iniciar a análise.");
+  if (currentModel) return;
 
   const response = await fetch("/api/models", {
     method: "POST",
@@ -341,11 +342,10 @@ async function validateModelBeforeLoop() {
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Não foi possível validar modelos no endpoint configurado.");
-  if (data.models.length && !data.models.includes(currentModel)) {
-    els.model.value = data.models[0];
-    persistSettings();
-    addLog(`Modelo ajustado para o id publicado pelo endpoint: ${data.models[0]}`, "modelo");
-  }
+  if (!data.models.length) throw new Error("Informe modelo manualmente. O endpoint não publicou modelos para seleção automática.");
+  els.model.value = data.models[0];
+  persistSettings();
+  addLog(`Modelo ajustado para o id publicado pelo endpoint: ${data.models[0]}`, "modelo");
 }
 
 function scheduleNextAnalysis() {
