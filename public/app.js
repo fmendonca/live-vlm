@@ -3,7 +3,7 @@ const presets = [
     id: "security",
     name: "Segurança",
     prompt:
-      "Analise a cena em tempo real. Descreva pessoas, veículos, objetos relevantes, comportamentos incomuns, riscos imediatos e mudanças importantes desde a última observação. Seja objetivo."
+      "Analise a cena atual. Descreva pessoas, veículos, objetos relevantes, comportamentos incomuns e riscos imediatos visíveis. Seja objetivo."
   },
   {
     id: "industrial",
@@ -30,6 +30,13 @@ const presets = [
   }
 ];
 
+const legacyPromptMigrations = new Map([
+  [
+    "Analise a cena em tempo real. Descreva pessoas, veículos, objetos relevantes, comportamentos incomuns, riscos imediatos e mudanças importantes desde a última observação. Seja objetivo.",
+    presets[0].prompt
+  ]
+]);
+
 const state = {
   mode: "webcam",
   stream: null,
@@ -37,8 +44,7 @@ const state = {
   analysisTimer: null,
   analysisActive: false,
   analysisAbort: null,
-  inFlight: false,
-  lastAnswer: ""
+  inFlight: false
 };
 
 const $ = (id) => document.getElementById(id);
@@ -262,7 +268,7 @@ async function analyzeOnce() {
         protocol: els.protocol.value,
         preset: els.presetSelect.value,
         source: state.mode,
-        prompt: withContext(els.prompt.value.trim()),
+        prompt: els.prompt.value.trim(),
         imageDataUrl
       }),
       signal: state.analysisAbort.signal
@@ -276,7 +282,6 @@ async function analyzeOnce() {
       throw new Error(detail || `Falha ao analisar frame (${response.status}).`);
     }
 
-    state.lastAnswer = data.answer;
     const exportMeta = data.export?.key ? ` · jsonl ${data.export.key}` : "";
     const exportError = data.export?.error ? ` · export erro: ${data.export.error}` : "";
     addLog(data.answer, `${data.latencyMs}ms · ${data.endpoint || "endpoint"}${exportMeta}${exportError}`);
@@ -317,12 +322,6 @@ async function loadModelsFromEndpoint() {
   } catch (error) {
     addLog(error.message, "modelos");
   }
-}
-
-function withContext(prompt) {
-  if (!state.lastAnswer) return prompt;
-  const previous = state.lastAnswer.length > 1200 ? state.lastAnswer.slice(-1200) : state.lastAnswer;
-  return `${prompt}\n\nObservação anterior do modelo:\n${previous}\n\nAtualize a análise considerando o frame atual.`;
 }
 
 async function validateModelBeforeLoop() {
@@ -410,7 +409,8 @@ function restoreSettings() {
   els.interval.value = saved.interval || "2000";
   els.intervalLabel.textContent = `${(Number(els.interval.value) / 1000).toFixed(1)}s`;
   els.presetSelect.value = saved.preset || "security";
-  els.prompt.value = saved.prompt || presets[0].prompt;
+  const savedPrompt = saved.prompt || presets[0].prompt;
+  els.prompt.value = legacyPromptMigrations.get(savedPrompt) || savedPrompt;
 }
 
 function applyProtocolDefaults() {
