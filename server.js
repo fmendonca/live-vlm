@@ -8,7 +8,7 @@ import { createAnalysisRecord, exportAnalysisRecord, getExportConfig, isExportCo
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = join(__dirname, "public");
-const appVersion = process.env.APP_VERSION || "0.1.13";
+const appVersion = process.env.APP_VERSION || "0.1.14";
 const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 3000);
 const rtspSessions = new Map();
@@ -97,8 +97,10 @@ function buildOpenAiPayload({ model, prompt, imageDataUrl }) {
         ]
       }
     ],
-    temperature: 0.2,
-    max_tokens: 500
+    temperature: 0.05,
+    max_tokens: 700,
+    frequency_penalty: 0.25,
+    presence_penalty: 0
   };
 }
 
@@ -183,7 +185,9 @@ function buildOllamaPayload({ model, prompt, imageDataUrl }) {
       }
     ],
     options: {
-      temperature: 0.2
+      temperature: 0.05,
+      repeat_penalty: 1.15,
+      num_predict: 700
     }
   };
 }
