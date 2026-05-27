@@ -3,13 +3,13 @@ const presets = [
     id: "security",
     name: "Segurança",
     prompt:
-      "Analise a cena em tempo real. Descreva pessoas, veículos, objetos relevantes, comportamentos incomuns, riscos imediatos e mudanças importantes desde a última observação. Seja objetivo."
+      "Analise a cena em tempo real. Priorize evidências visuais do frame atual: pessoas, postura corporal, mãos e braços, veículos, objetos relevantes, comportamentos incomuns, riscos imediatos e mudanças importantes."
   },
   {
     id: "industrial",
     name: "Operação industrial",
     prompt:
-      "Monitore a cena como inspeção industrial. Identifique EPIs, máquinas, zonas bloqueadas, vazamentos, fumaça, obstruções, pessoas em área de risco e anomalias visuais."
+      "Monitore a cena como inspeção industrial. Identifique EPIs, postura dos operadores, mãos e braços visíveis, máquinas, zonas bloqueadas, vazamentos, fumaça, obstruções, pessoas em área de risco e anomalias visuais."
   },
   {
     id: "retail",
@@ -38,7 +38,8 @@ const state = {
   analysisActive: false,
   analysisAbort: null,
   inFlight: false,
-  lastAnswer: ""
+  lastAnswer: "",
+  frameIndex: 0
 };
 
 const $ = (id) => document.getElementById(id);
@@ -226,12 +227,12 @@ async function captureFrame() {
   }
 
   if (!state.stream || !els.video.videoWidth) throw new Error("Webcam não iniciada.");
-  const width = Math.min(720, els.video.videoWidth);
+  const width = Math.min(960, els.video.videoWidth);
   const height = Math.round((els.video.videoHeight / els.video.videoWidth) * width);
   canvas.width = width;
   canvas.height = height;
   ctx.drawImage(els.video, 0, 0, width, height);
-  return canvas.toDataURL("image/jpeg", 0.72);
+  return canvas.toDataURL("image/jpeg", 0.86);
 }
 
 function blobToDataUrl(blob) {
@@ -252,6 +253,7 @@ async function analyzeOnce() {
 
   try {
     const imageDataUrl = await captureFrame();
+    state.frameIndex += 1;
     const response = await fetch("/api/analyze", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -262,7 +264,7 @@ async function analyzeOnce() {
         protocol: els.protocol.value,
         preset: els.presetSelect.value,
         source: state.mode,
-        prompt: withContext(els.prompt.value.trim()),
+        prompt: buildAnalysisPrompt(els.prompt.value.trim()),
         imageDataUrl
       }),
       signal: state.analysisAbort.signal
@@ -319,10 +321,32 @@ async function loadModelsFromEndpoint() {
   }
 }
 
-function withContext(prompt) {
-  if (!state.lastAnswer) return prompt;
-  const previous = state.lastAnswer.length > 1200 ? state.lastAnswer.slice(-1200) : state.lastAnswer;
-  return `${prompt}\n\nObservação anterior do modelo:\n${previous}\n\nAtualize a análise considerando o frame atual.`;
+function buildAnalysisPrompt(prompt) {
+  const previous = state.lastAnswer
+    ? (state.lastAnswer.length > 900 ? state.lastAnswer.slice(0, 900) : state.lastAnswer)
+    : "Nenhuma observação anterior disponível.";
+
+  return `${prompt}
+
+Instruções obrigatórias para este frame:
+- Reavalie a imagem atual do zero. Use a observação anterior apenas para comparar mudanças, nunca para copiar texto.
+- Descreva detalhes visuais concretos: quantidade de pessoas, posição no quadro, postura, orientação do corpo, roupas/cores relevantes, objetos próximos e ações visíveis.
+- Verifique explicitamente mãos e braços de cada pessoa visível. Informe se há mão ou braço levantado, acima do ombro, acenando, parado no ar, abaixado ou fora do quadro.
+- Se uma condição continuar visível em frames consecutivos, marque como "persistente". Se desaparecer, marque como "não visível agora".
+- Se não tiver certeza, diga "incerto" e explique qual parte da imagem limita a análise.
+- Evite repetir a resposta anterior. Responda somente fatos verificáveis no frame atual e mudanças relevantes.
+
+Contexto temporal:
+- Frame atual: ${state.frameIndex}
+- Observação anterior para comparação: ${previous}
+
+Formato da resposta:
+Resumo atual:
+Pessoas/postura:
+Mãos e braços:
+Mudanças desde o frame anterior:
+Alertas ou ações recomendadas:
+Confiança:`;
 }
 
 async function validateModelBeforeLoop() {
@@ -386,6 +410,8 @@ function pauseAnalysisLoop(statusText = "análise pausada") {
 function stopAnalysisLoop() {
   pauseAnalysisLoop("análise parada");
   if (state.analysisAbort) state.analysisAbort.abort();
+  state.lastAnswer = "";
+  state.frameIndex = 0;
 }
 
 function persistSettings() {
