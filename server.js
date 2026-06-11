@@ -8,9 +8,11 @@ import { createAnalysisRecord, exportAnalysisRecord, getExportConfig, isExportCo
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = join(__dirname, "public");
-const appVersion = process.env.APP_VERSION || "0.1.14";
+const appVersion = process.env.APP_VERSION || "0.1.15";
 const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 3000);
+const llmMaxTokens = clampNumber(process.env.LLM_MAX_TOKENS, 250, 64, 512);
+const llmTemperature = clampNumber(process.env.LLM_TEMPERATURE, 0.05, 0, 1);
 const rtspSessions = new Map();
 const exportConfig = getExportConfig();
 
@@ -26,6 +28,12 @@ const mimeTypes = {
 };
 
 mkdirSync(publicDir, { recursive: true });
+
+function clampNumber(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
 
 function sendJson(res, status, data) {
   const body = JSON.stringify(data);
@@ -97,8 +105,8 @@ function buildOpenAiPayload({ model, prompt, imageDataUrl }) {
         ]
       }
     ],
-    temperature: 0.05,
-    max_tokens: 700,
+    temperature: llmTemperature,
+    max_tokens: llmMaxTokens,
     frequency_penalty: 0.25,
     presence_penalty: 0
   };
@@ -185,9 +193,9 @@ function buildOllamaPayload({ model, prompt, imageDataUrl }) {
       }
     ],
     options: {
-      temperature: 0.05,
+      temperature: llmTemperature,
       repeat_penalty: 1.15,
-      num_predict: 700
+      num_predict: llmMaxTokens
     }
   };
 }
