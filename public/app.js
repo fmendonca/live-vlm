@@ -323,30 +323,20 @@ async function loadModelsFromEndpoint() {
 
 function buildAnalysisPrompt(prompt) {
   const previous = state.lastAnswer
-    ? (state.lastAnswer.length > 900 ? state.lastAnswer.slice(0, 900) : state.lastAnswer)
-    : "Nenhuma observação anterior disponível.";
+    ? (state.lastAnswer.length > 300 ? state.lastAnswer.slice(0, 300) : state.lastAnswer)
+    : "sem anterior";
 
   return `${prompt}
 
-Instruções obrigatórias para este frame:
-- Reavalie a imagem atual do zero. Use a observação anterior apenas para comparar mudanças, nunca para copiar texto.
-- Descreva detalhes visuais concretos: quantidade de pessoas, posição no quadro, postura, orientação do corpo, roupas/cores relevantes, objetos próximos e ações visíveis.
-- Verifique explicitamente mãos e braços de cada pessoa visível. Informe se há mão ou braço levantado, acima do ombro, acenando, parado no ar, abaixado ou fora do quadro.
-- Se uma condição continuar visível em frames consecutivos, marque como "persistente". Se desaparecer, marque como "não visível agora".
-- Se não tiver certeza, diga "incerto" e explique qual parte da imagem limita a análise.
-- Evite repetir a resposta anterior. Responda somente fatos verificáveis no frame atual e mudanças relevantes.
+Frame ${state.frameIndex}. Anterior: ${previous}
 
-Contexto temporal:
-- Frame atual: ${state.frameIndex}
-- Observação anterior para comparação: ${previous}
-
-Formato da resposta:
-Resumo atual:
-Pessoas/postura:
-Mãos e braços:
-Mudanças desde o frame anterior:
-Alertas ou ações recomendadas:
-Confiança:`;
+Responda curto, sem copiar o anterior. Reavalie só o frame atual.
+Checklist obrigatório:
+1. Pessoas/postura.
+2. Mãos e braços: levantado/acima do ombro, abaixado, fora do quadro ou incerto.
+3. Mudanças/persistências desde o anterior.
+4. Alertas.
+5. Confiança.`;
 }
 
 async function validateModelBeforeLoop() {
